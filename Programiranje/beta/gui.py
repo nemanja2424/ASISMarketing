@@ -1,5 +1,6 @@
-# gui.py
 import sys
+import os
+import json
 from PySide6.QtWidgets import (
     QApplication,
     QWidget,
@@ -17,6 +18,8 @@ from BW_Controller.create_profile import create_profile
 
 
 class MainGUI(QWidget):
+    PROFILES_DIR = "profiles"
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ASIS Marketing Browser")
@@ -101,6 +104,31 @@ class MainGUI(QWidget):
         self.content_layout.addLayout(header_layout)
 
     # ==========================
+    # Profile loader
+    # ==========================
+
+    def load_profiles(self):
+        """Učitava sve profile iz foldera i vraća listu dict-ova"""
+        profiles = []
+        if not os.path.exists(self.PROFILES_DIR):
+            return profiles
+
+        for filename in os.listdir(self.PROFILES_DIR):
+            if filename.endswith(".json"):
+                path = os.path.join(self.PROFILES_DIR, filename)
+                with open(path, "r", encoding="utf-8") as f:
+                    try:
+                        data = json.load(f)
+                        profiles.append({
+                            "profile_id": data.get("profile_id"),
+                            "display_name": data.get("profile_id"),  # za početak
+                            "path": path
+                        })
+                    except Exception as e:
+                        print(f"Greška pri učitavanju {filename}: {e}")
+        return profiles
+
+    # ==========================
     # Pages
     # ==========================
 
@@ -108,15 +136,35 @@ class MainGUI(QWidget):
         self.clear_content()
 
         btn_create_profile = QPushButton("Napravi profil")
-        btn_create_profile.clicked.connect(create_profile)
+        btn_create_profile.clicked.connect(self.on_create_profile_clicked)
         self.build_header("Profili", btn_create_profile)
 
-        placeholder = QLabel("Ovde će se prikazivati lista profila")
-        placeholder.setAlignment(Qt.AlignCenter)
+        # Učitavanje svih profila
+        profiles = self.load_profiles()
 
-        self.content_layout.addStretch()
-        self.content_layout.addWidget(placeholder)
-        self.content_layout.addStretch()
+        for profile in profiles:
+            row_layout = QHBoxLayout()
+
+            lbl_name = QLabel(profile["display_name"])
+            btn_run = QPushButton("Run")
+            # Za sada dugme nema funkciju
+            # btn_run.clicked.connect(lambda: run_profile(profile["profile_id"]))
+
+            row_layout.addWidget(lbl_name)
+            row_layout.addSpacerItem(
+                QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+            )
+            row_layout.addWidget(btn_run)
+
+            self.content_layout.addLayout(row_layout)
+
+        # Ako nema profila
+        if not profiles:
+            placeholder = QLabel("Nema profila")
+            placeholder.setAlignment(Qt.AlignCenter)
+            self.content_layout.addStretch()
+            self.content_layout.addWidget(placeholder)
+            self.content_layout.addStretch()
 
     def show_logs_page(self):
         self.clear_content()
@@ -141,6 +189,15 @@ class MainGUI(QWidget):
         self.content_layout.addStretch()
         self.content_layout.addWidget(placeholder)
         self.content_layout.addStretch()
+
+    # ==========================
+    # Create profile button
+    # ==========================
+
+    def on_create_profile_clicked(self):
+        profile_path = create_profile()  # ovo poziva BW_Controller
+        print(f"Profil kreiran: {profile_path}")
+        self.show_profiles_page()  # osveži listu profila odmah nakon kreiranja
 
 
 def run_gui():
