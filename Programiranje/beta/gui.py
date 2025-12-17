@@ -1,6 +1,8 @@
+#gui.py
 import sys
 import os
 import json
+import multiprocessing
 from PySide6.QtWidgets import (
     QApplication,
     QWidget,
@@ -15,6 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from BW_Controller.create_profile import create_profile
+from BW_Controller.run import run_profile_process
 
 
 class MainGUI(QWidget):
@@ -108,24 +111,31 @@ class MainGUI(QWidget):
     # ==========================
 
     def load_profiles(self):
-        """Učitava sve profile iz foldera i vraća listu dict-ova"""
+        """Učitava sve profile iz foldera (rekurzivno) i vraća listu dict-ova"""
         profiles = []
         if not os.path.exists(self.PROFILES_DIR):
             return profiles
 
-        for filename in os.listdir(self.PROFILES_DIR):
-            if filename.endswith(".json"):
-                path = os.path.join(self.PROFILES_DIR, filename)
+        for root, dirs, files in os.walk(self.PROFILES_DIR):
+            for filename in files:
+                if not filename.endswith(".json"):
+                    continue
+                path = os.path.join(root, filename)
                 with open(path, "r", encoding="utf-8") as f:
                     try:
                         data = json.load(f)
+                        # Only include files that look like profile meta or contain profile_id
+                        if not data.get("profile_id"):
+                            continue
+
+                        display_name = data.get("metadata", {}).get("display_name") or data.get("profile_id")
                         profiles.append({
                             "profile_id": data.get("profile_id"),
-                            "display_name": data.get("profile_id"),  # za početak
+                            "display_name": display_name,
                             "path": path
                         })
                     except Exception as e:
-                        print(f"Greška pri učitavanju {filename}: {e}")
+                        print(f"Greška pri učitavanju {path}: {e}")
         return profiles
 
     # ==========================
@@ -147,8 +157,9 @@ class MainGUI(QWidget):
 
             lbl_name = QLabel(profile["display_name"])
             btn_run = QPushButton("Run")
-            # Za sada dugme nema funkciju
-            # btn_run.clicked.connect(lambda: run_profile(profile["profile_id"]))
+            btn_run.clicked.connect(
+                lambda _, p=profile["path"]: self.run_profile_mp(p)
+            )
 
             row_layout.addWidget(lbl_name)
             row_layout.addSpacerItem(
@@ -199,6 +210,15 @@ class MainGUI(QWidget):
         print(f"Profil kreiran: {profile_path}")
         self.show_profiles_page()  # osveži listu profila odmah nakon kreiranja
 
+    def run_profile_mp(self, profile_path):
+        process = multiprocessing.Process(
+            target=run_profile_process,
+            args=(profile_path,),
+            daemon=False
+        )
+        process.start()
+
+
 
 def run_gui():
     app = QApplication(sys.argv)
@@ -208,4 +228,5 @@ def run_gui():
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("spawn")
     run_gui()
