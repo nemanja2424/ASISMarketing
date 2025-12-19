@@ -12,12 +12,13 @@ from PySide6.QtWidgets import (
     QLabel,
     QFrame,
     QSpacerItem,
-    QSizePolicy
+    QSizePolicy,
+    QInputDialog,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
 from BW_Controller.create_profile import create_profile
-from BW_Controller.run import run_profile_process
+from BW_Controller.run_profile import run_profile_process
 
 
 class MainGUI(QWidget):
@@ -153,21 +154,52 @@ class MainGUI(QWidget):
         profiles = self.load_profiles()
 
         for profile in profiles:
-            row_layout = QHBoxLayout()
+            # Load profile.json to get namespaces
+            try:
+                with open(profile['path'], 'r', encoding='utf-8') as f:
+                    pdata = json.load(f)
+            except Exception:
+                pdata = {}
 
-            lbl_name = QLabel(profile["display_name"])
-            btn_run = QPushButton("Run")
-            btn_run.clicked.connect(
-                lambda _, p=profile["path"]: self.run_profile_mp(p)
-            )
+            display_name = profile["display_name"]
 
-            row_layout.addWidget(lbl_name)
-            row_layout.addSpacerItem(
-                QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-            )
-            row_layout.addWidget(btn_run)
+            namespaces = pdata.get('namespaces', {})
 
-            self.content_layout.addLayout(row_layout)
+            if not namespaces:
+                # Show a single row for profile with no namespaces
+                row_layout = QHBoxLayout()
+                lbl_name = QLabel(display_name)
+                btn_add_ns = QPushButton("Dodaj namespace")
+                btn_add_ns.clicked.connect(lambda _, p=profile['path']: self.on_add_namespace_clicked(p))
+
+                row_layout.addWidget(lbl_name)
+                row_layout.addSpacerItem(
+                    QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+                )
+                row_layout.addWidget(btn_add_ns)
+                self.content_layout.addLayout(row_layout)
+                continue
+
+            # Otherwise show a row per namespace
+            for ns_name, ns_path in namespaces.items():
+                row_layout = QHBoxLayout()
+
+                lbl_name = QLabel(f"{display_name} / {ns_name}")
+                btn_run = QPushButton("Run")
+                btn_run.clicked.connect(
+                    lambda _, p=ns_path: self.run_profile_mp(p)
+                )
+                btn_add_ns = QPushButton("Dodaj namespace")
+                btn_add_ns.clicked.connect(lambda _, p=profile['path']: self.on_add_namespace_clicked(p))
+
+                row_layout.addWidget(lbl_name)
+                row_layout.addSpacerItem(
+                    QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+                )
+                row_layout.addWidget(btn_run)
+                row_layout.addWidget(btn_add_ns)
+
+                self.content_layout.addLayout(row_layout)
 
         # Ako nema profila
         if not profiles:
@@ -206,9 +238,28 @@ class MainGUI(QWidget):
     # ==========================
 
     def on_create_profile_clicked(self):
-        profile_path = create_profile()  # ovo poziva BW_Controller
-        print(f"Profil kreiran: {profile_path}")
-        self.show_profiles_page()  # osveži listu profila odmah nakon kreiranja
+        process = multiprocessing.Process(
+            target=create_profile,
+            daemon=False
+        )
+        process.start()
+
+    def on_add_namespace_clicked(self, profile_path):
+        # Ask the user for a namespace name
+        ns, ok = QInputDialog.getText(self, "Namespace name", "Enter namespace name:")
+        if not ok or not ns:
+            return
+
+        # Spawn worker to add namespace to the profile
+        process = multiprocessing.Process(
+            target=create_profile,
+            kwargs={"namespace": ns, "profile_path": profile_path},
+            daemon=False,
+        )
+        process.start()
+
+        # Refresh profiles shortly after starting the process so new namespace appears
+        QTimer.singleShot(1000, self.show_profiles_page)
 
     def run_profile_mp(self, profile_path):
         process = multiprocessing.Process(

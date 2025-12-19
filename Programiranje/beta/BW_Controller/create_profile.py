@@ -1,302 +1,161 @@
-# BW_Controller/create_profile.py
+"""Create a persistent Camoufox profile and save its launch options.
+
+This module is executed in a separate process from the GUI. When run it:
+
+- Creates a new folder under `profiles/` (e.g. `profiles/profile_ab12cd34`).
+- Creates a `user_data` directory inside it and calls `launch_options(user_data_dir=...)`.
+- Saves a `profile.json` file containing `profile_id`, `metadata` and the serialized `options`.
+- Launches Camoufox with `from_options=opts, persistent_context=True` so the user can interact
+  with the browser before finalizing the profile.
+
+Usage:
+	python BW_Controller/create_profile.py
+	or from your GUI with multiprocessing.Process(target=create_profile)
+"""
+
+from __future__ import annotations
 
 import json
 import os
 import uuid
 from datetime import datetime
-from time import sleep
+from pathlib import Path
+from typing import Any
 
-from camoufox import Camoufox
-
-PROFILES_DIR = "profiles"
-os.makedirs(PROFILES_DIR, exist_ok=True)
-
-MAX_ATTEMPTS = 10
+from camoufox import Camoufox, launch_options
 
 
-def extract_fingerprint(page):
-    """
-    Izvlači kompletan fingerprint iz browser stranice.
-    Vraća dict sa svim potrebnim podacima.
-    """
-    fingerprint = page.evaluate(
-        """
-        () => {
-            const canvas = document.createElement('canvas');
-            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-            const debugInfo = gl ? gl.getExtension('WEBGL_debug_renderer_info') : null;
-
-            // Canvas fingerprint
-            let canvasFingerprint = null;
-            try {
-                canvas.width = 200;
-                canvas.height = 50;
-                const canvasCtx = canvas.getContext('2d');
-                if (canvasCtx) {
-                    canvasCtx.textBaseline = 'top';
-                    canvasCtx.font = '14px Arial';
-                    canvasCtx.fillStyle = '#f60';
-                    canvasCtx.fillRect(125, 1, 62, 20);
-                    canvasCtx.fillStyle = '#069';
-                    canvasCtx.fillText('Canvas fingerprint', 2, 15);
-                    canvasFingerprint = canvas.toDataURL();
-                } else {
-                    canvasFingerprint = null;
-                }
-            } catch (e) {
-                canvasFingerprint = null;
-            }
-
-            // Audio context fingerprint
-            let audioFingerprint = null;
-            try {
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                audioFingerprint = {
-                    sampleRate: audioContext.sampleRate,
-                    state: audioContext.state,
-                    maxChannelCount: audioContext.destination.maxChannelCount
-                };
-                audioContext.close();
-            } catch (e) {
-                audioFingerprint = null;
-            }
-
-            // WebGL fingerprint
-            let webglFingerprint = null;
-            if (gl) {
-                webglFingerprint = {
-                    vendor: debugInfo 
-                        ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)
-                        : gl.getParameter(gl.VENDOR),
-                    renderer: debugInfo 
-                        ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
-                        : gl.getParameter(gl.RENDERER),
-                    version: gl.getParameter(gl.VERSION),
-                    shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
-                    maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
-                    maxViewportDims: gl.getParameter(gl.MAX_VIEWPORT_DIMS)
-                };
-            }
-
-            // Fonts detection
-            const baseFonts = ['monospace', 'sans-serif', 'serif'];
-            const testFonts = [
-                'Arial', 'Verdana', 'Times New Roman', 'Courier New',
-                'Georgia', 'Palatino', 'Garamond', 'Comic Sans MS',
-                'Trebuchet MS', 'Arial Black', 'Impact'
-            ];
-            const detectedFonts = [];
-            
-            const testString = 'mmmmmmmmmmlli';
-            const testSize = '72px';
-            const h = document.getElementsByTagName('body')[0] || document.documentElement;
-            const s = document.createElement('span');
-            s.style.fontSize = testSize;
-            s.innerHTML = testString;
-            const defaultWidth = {};
-            const defaultHeight = {};
-            
-            for (const baseFont of baseFonts) {
-                s.style.fontFamily = baseFont;
-                h.appendChild(s);
-                defaultWidth[baseFont] = s.offsetWidth;
-                defaultHeight[baseFont] = s.offsetHeight;
-                h.removeChild(s);
-            }
-            
-            for (const font of testFonts) {
-                let detected = false;
-                for (const baseFont of baseFonts) {
-                    s.style.fontFamily = font + ',' + baseFont;
-                    h.appendChild(s);
-                    const matched = (s.offsetWidth !== defaultWidth[baseFont] || 
-                                   s.offsetHeight !== defaultHeight[baseFont]);
-                    h.removeChild(s);
-                    if (matched) {
-                        detected = true;
-                        break;
-                    }
-                }
-                if (detected) {
-                    detectedFonts.push(font);
-                }
-            }
-
-            return {
-                // Browser basics
-                userAgent: navigator.userAgent,
-                platform: navigator.platform,
-                languages: navigator.languages,
-                language: navigator.language,
-                
-                // Screen & Display
-                screen: {
-                    width: screen.width,
-                    height: screen.height,
-                    availWidth: screen.availWidth,
-                    availHeight: screen.availHeight,
-                    colorDepth: screen.colorDepth,
-                    pixelDepth: screen.pixelDepth,
-                    dpr: window.devicePixelRatio
-                },
-                
-                // Hardware
-                hardwareConcurrency: navigator.hardwareConcurrency,
-                deviceMemory: navigator.deviceMemory || null,
-                
-                // Timezone & Locale
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                timezoneOffset: new Date().getTimezoneOffset(),
-                
-                // WebGL
-                webgl: webglFingerprint,
-                
-                // Canvas
-                canvas: canvasFingerprint,
-                
-                // Audio
-                audio: audioFingerprint,
-                
-                // Fonts
-                fonts: detectedFonts,
-                
-                // Additional properties
-                doNotTrack: navigator.doNotTrack,
-                cookieEnabled: navigator.cookieEnabled,
-                plugins: Array.from(navigator.plugins || []).map(p => ({
-                    name: p.name,
-                    description: p.description,
-                    filename: p.filename
-                })),
-                
-                // Media devices
-                mediaDevices: navigator.mediaDevices ? true : false,
-                
-                // Permissions
-                permissions: navigator.permissions ? true : false
-            };
-        }
-        """
-    )
-    
-    return fingerprint
+PROFILES_DIR = Path("profiles")
 
 
-def create_profile():
-    """
-    Kreira novi browser profil i čuva:
-      - profiles/<id>/fingerprint.json
-      - profiles/<id>/storage_state.json
-      - profiles/<id>/meta.json
-      - profiles/<id>/user_data/  (prazan folder za buduću upotrebu)
+def _make_serializable(obj: Any) -> Any:
+	"""Recursively convert object to JSON-serializable types."""
+	if obj is None or isinstance(obj, (str, int, float, bool)):
+		return obj
+	if isinstance(obj, Path):
+		return str(obj)
+	if isinstance(obj, dict):
+		return {k: _make_serializable(v) for k, v in obj.items()}
+	if isinstance(obj, (list, tuple)):
+		return [_make_serializable(v) for v in obj]
+	# Fallback to string representation for unknown types
+	return str(obj)
 
-    Vraća putanju do `meta.json` koji run.py kasnije koristi za pokretanje.
-    """
-    profile_id = str(uuid.uuid4())
-    created_at = datetime.utcnow().isoformat()
 
-    profile_dir = os.path.join(PROFILES_DIR, profile_id)
-    os.makedirs(profile_dir, exist_ok=True)
-    user_data_dir = os.path.join(profile_dir, "user_data")
-    os.makedirs(user_data_dir, exist_ok=True)
+def create_profile(display_name: str | None = None, *, namespace: str = "default", headless: bool = False, no_launch: bool = False, profile_path: str | None = None) -> tuple[str, str]:
+	"""Create a profile (or namespace) and save its launch options.
 
-    attempt = 0
-    fingerprint = None
-    storage_state = None
+	If `profile_path` points to an existing `profile.json`, add the namespace under
+	that profile. Otherwise create a new profile. Returns (profile_id, namespace).
+	"""
+	PROFILES_DIR.mkdir(exist_ok=True)
 
-    while attempt < MAX_ATTEMPTS:
-        attempt += 1
-        print(f"🔄 Pokušaj {attempt}/{MAX_ATTEMPTS} generisanja validnog Windows fingerprinta...")
+	# If profile_path is given, load it and reuse that profile
+	if profile_path:
+		p = Path(profile_path)
+		if not p.exists():
+			raise FileNotFoundError(profile_path)
+		with p.open("r", encoding="utf-8") as f:
+			profile_meta = json.load(f)
+		profile_id = profile_meta.get("profile_id")
+		profile_dir = p.parent
+	else:
+		# Create new profile
+		profile_id = f"profile_{uuid.uuid4().hex[:8]}"
+		profile_dir = PROFILES_DIR / profile_id
+		profile_dir.mkdir(exist_ok=True)
+		profile_meta = {
+			"profile_id": profile_id,
+			"metadata": {
+				"display_name": display_name or profile_id,
+				"created_at": datetime.utcnow().isoformat() + "Z",
+			},
+			"namespaces": {},
+		}
 
-        try:
-            # Target Windows OS to generate Windows-like fingerprints
-            with Camoufox(headless=False, os='windows') as browser:
-                context = browser.new_context()
-                page = context.new_page()
+	# Write profile.json if missing
+	profile_path = profile_dir / "profile.json"
+	with profile_path.open("w", encoding="utf-8") as f:
+		json.dump(profile_meta, f, indent=2, ensure_ascii=False)
 
-                page.goto("about:blank")
-                page.wait_for_timeout(1000)
+	# Create namespace directory
+	ns_dir = profile_dir / "namespaces" / namespace
+	ns_dir.mkdir(parents=True, exist_ok=True)
 
-                fingerprint = extract_fingerprint(page)
+	user_data_dir = ns_dir / "user_data"
+	user_data_dir.mkdir(exist_ok=True)
 
-                viewport = page.viewport_size
-                if viewport:
-                    fingerprint['viewport'] = {
-                        'width': viewport['width'],
-                        'height': viewport['height']
-                    }
+	user_data_dir_abs = str(user_data_dir.resolve())
 
-                # Pokušamo da sačuvamo storage_state ako je dostupan
-                try:
-                    if hasattr(context, "storage_state"):
-                        # Ako metoda vraća dict kada se pozove bez path
-                        storage_state = context.storage_state()
-                    else:
-                        cookies = []
-                        try:
-                            cookies = context.cookies()
-                        except Exception:
-                            cookies = []
+	print(f"Generating launch options for namespace '{namespace}' at: {user_data_dir_abs}")
 
-                        local_storage = page.evaluate(
-                            """() => { const s = {}; for (let i=0;i<localStorage.length;i++){ const k = localStorage.key(i); s[k]=localStorage.getItem(k);} return s;}"""
-                        )
+	# Generate the launch options
+	try:
+		opts = launch_options(user_data_dir=user_data_dir_abs, headless=headless)
+	except Exception as exc:  # pragma: no cover - runtime environment dependent
+		print(f"Error while generating launch options: {exc}")
+		raise
 
-                        origins = []
-                        if local_storage:
-                            origin_entry = {
-                                "origin": page.url,
-                                "localStorage": [{"name": k, "value": v} for k, v in local_storage.items()]
-                            }
-                            origins.append(origin_entry)
+	# Convert launch options into a JSON serializable form
+	opts_serial = _make_serializable(opts)
 
-                        storage_state = {"cookies": cookies, "origins": origins}
-                except Exception as e:
-                    print(f"⚠️ Ne mogu da očuvam storage_state: {e}")
-                    storage_state = {"cookies": [], "origins": []}
+	ns_meta = {
+		"name": namespace,
+		"created_at": datetime.utcnow().isoformat() + "Z",
+		"options": opts_serial,
+		"user_data_dir": user_data_dir_abs,
+	}
 
-            # No validation: accept the first successfully generated fingerprint
-            print("✅ Fingerprint generisan (bez validacije).")
-            break
+	# Save namespace metadata
+	ns_path = ns_dir / "namespace.json"
+	with ns_path.open("w", encoding="utf-8") as f:
+		json.dump(ns_meta, f, indent=2, ensure_ascii=False)
 
-        except Exception as e:
-            print(f"⚠️  Greška pri generisanju fingerprinta: {e}")
-            fingerprint = None
-            storage_state = None
-            sleep(0.5)
+	# Update the top-level profile metadata
+	profile_meta.setdefault("namespaces", {})[namespace] = str(ns_path)
+	with profile_path.open("w", encoding="utf-8") as f:
+		json.dump(profile_meta, f, indent=2, ensure_ascii=False)
 
-    if not fingerprint:
-        raise RuntimeError(
-            f"❌ Nije uspelo generisanje validnog Windows fingerprinta u {MAX_ATTEMPTS} pokušaja"
-        )
+	print(f"Namespace saved to {ns_path}")
 
-    # Sačuvaj fingerprint i storage state
-    fingerprint_path = os.path.join(profile_dir, "fingerprint.json")
-    storage_path = os.path.join(profile_dir, "storage_state.json")
-    meta_path = os.path.join(profile_dir, "meta.json")
+	if no_launch:
+		print("Skipping launching Camoufox (no_launch=True). Namespace generation finished.")
+		return profile_id, namespace
 
-    with open(fingerprint_path, "w", encoding="utf-8") as f:
-        json.dump(fingerprint, f, indent=4, ensure_ascii=False)
+	# Launch Camoufox so the user can interact and finalize anything stored in user_data
+	try:
+		with Camoufox(from_options=opts, persistent_context=True) as browser:
+			# Use an existing page if present to avoid opening an extra window/tab
+			pages = list(browser.pages)
+			if pages:
+				page = pages[0]
+			else:
+				page = browser.new_page()
+			page.goto("about:blank")
+			print("Camoufox is running for namespace. Interact with the browser to populate the namespace.")
+			print("Close the browser window to finalize the namespace, or press ENTER if running from a TTY")
+			import sys, time
+			try:
+				if sys.stdin and sys.stdin.isatty():
+					input()
+				else:
+					while True:
+						try:
+							if page.is_closed():
+								break
+						except Exception:
+							break
+						time.sleep(0.5)
+			except (KeyboardInterrupt, EOFError):
+				pass
 
-    with open(storage_path, "w", encoding="utf-8") as f:
-        json.dump(storage_state or {"cookies": [], "origins": []}, f, indent=4, ensure_ascii=False)
+	except Exception as exc:  # pragma: no cover - depends on runtime
+		print(f"Error while launching Camoufox: {exc}")
+		raise
 
-    meta = {
-        "profile_id": profile_id,
-        "created_at": created_at,
-        "user_data_dir": os.path.relpath(user_data_dir, start=os.getcwd()),
-        "fingerprint_file": os.path.relpath(fingerprint_path, start=profile_dir),
-        "storage_state_file": os.path.relpath(storage_path, start=profile_dir),
-        "metadata": {
-            "last_used": None,
-            "usage_count": 0,
-            "notes": "",
-        },
-        "version": 1
-    }
+	print(f"Profile {profile_id} namespace '{namespace}' creation finished.")
+	return profile_id, namespace
 
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=4, ensure_ascii=False)
 
-    print(f"💾 Profil sačuvan: {meta_path}")
-    return meta_path
+if __name__ == "__main__":  # pragma: no cover - manual run
+	create_profile()
