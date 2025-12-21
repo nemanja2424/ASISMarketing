@@ -48,6 +48,55 @@ def run_profile_process(profile_json_path: str) -> None:
             page = pages[0]
         else:
             page = browser.new_page()
+
+        # Apply saved geolocation if present
+        geo = data.get("geolocation")
+        if geo:
+            try:
+                # Browser is a BrowserContext when persistent_context=True
+                # set_geolocation expects dict with latitude & longitude
+                loc = {"latitude": float(geo["latitude"]), "longitude": float(geo["longitude"])}
+                if hasattr(browser, "set_geolocation"):
+                    try:
+                        browser.set_geolocation(loc)
+                    except Exception:
+                        # some environments require page.context.set_geolocation; try both
+                        try:
+                            page.context.set_geolocation(loc)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        # Apply timezone override if present in geolocation metadata
+        tz = data.get("geolocation", {}).get("timezone")
+        if tz:
+            try:
+                # Use a small init script to override Intl timezone resolution
+                script = (
+                    "(() => { const tz = '" + str(tz) + "'; try { const orig = Intl.DateTimeFormat.prototype.resolvedOptions; Intl.DateTimeFormat.prototype.resolvedOptions = function() { return Object.assign({}, orig.call(this), { timeZone: tz }); }; } catch(e) {} })();"
+                )
+                try:
+                    page.add_init_script(script)
+                except Exception:
+                    try:
+                        # Older API
+                        page.context.add_init_script(script)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # Enforce viewport/window size to 1920x1080 to match fingerprint
+        try:
+            page.set_viewport_size({"width": 1920, "height": 1080})
+        except Exception:
+            try:
+                # older API
+                page.set_viewport_size(1920, 1080)
+            except Exception:
+                pass
+
         page.goto("about:blank")
         print("Camoufox is running. Close the browser window to stop it.")
 
