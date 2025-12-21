@@ -394,6 +394,50 @@ def call_lm_assess(fingerprint: Dict[str, Any], checks: Dict[str, Any], consiste
             return llm_result
 
 
+def _deterministic_hints_for_checks(checks: Dict[str, Any]) -> list:
+    """Return deterministic, actionable hints in a stable order.
+
+    Priority & ordering follows the user's requested preference:
+      1) WebGL hint
+      2) Canvas hint
+      3) Accept-Language hint
+      4) Timezone consistency hint
+    Additional hints (e.g., screen/device memory) may be appended when relevant.
+    """
+    hints = []
+
+    # 1) WebGL
+    if checks.get("webgl_present") is False:
+        hints.append("Consider enabling WebGL or providing WebGL vendor/renderer data for richer fingerprinting.")
+
+    # 2) Canvas
+    if not checks.get("canvas_present"):
+        hints.append("Generate a canvas fingerprint hash (e.g., via a small canvas draw + hash) to improve uniqueness.")
+
+    # 3) Accept-Language / navigator.languages
+    if not checks.get("accept_language"):
+        hints.append("Provide an Accept-Language header / navigator.languages to improve completeness.")
+
+    # 4) Timezone consistency
+    if checks.get("timezone_match") is None:
+        hints.append("Ensure timezone information is present and consistent with geolocation coordinates.")
+
+    # Additional optional hints (kept after the requested ones)
+    if checks.get("screen_ok") is False:
+        hints.append("Provide accurate screen resolution and color depth to match the device (e.g., 1920x1080).")
+    if checks.get("device_memory_gb") is None:
+        hints.append("Report device memory in GB via navigator.deviceMemory or a reasonable default.")
+    if checks.get("media_device_count") is None:
+        hints.append("Enumerate media devices (navigator.mediaDevices.enumerateDevices()) to report audio/video device counts.")
+
+    # Deduplicate preserving order
+    out = []
+    for h in hints:
+        if h not in out:
+            out.append(h)
+    return out
+
+
 def run_consistency_and_save(namespace_path: Path, consistency_options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Run deterministic checks and the LLM assessor and save results to `namespace.json`.
 
@@ -422,6 +466,23 @@ def run_consistency_and_save(namespace_path: Path, consistency_options: Optional
         llm_result = call_lm_assess(ns, checks, consistency_options=opts)
     except Exception as exc:
         llm_result = {"score": 0, "verdict": "ERROR", "issues": [str(exc)], "hints": [], "confidence": 0.0}
+
+    # Augment LLM hints with deterministic hints to ensure actionable guidance
+    try:
+        base_hints = llm_result.get("hints") or []
+        if not isinstance(base_hints, list):
+            # If the LM returned a string or other structure, normalize to list
+            base_hints = [str(base_hints)]
+        det_hints = _deterministic_hints_for_checks(checks)
+        # Merge while preserving order and uniqueness (LM hints first)
+        merged = list(base_hints)
+        for h in det_hints:
+            if h not in merged:
+                merged.append(h)
+        llm_result["hints"] = merged
+    except Exception:
+        # If anything goes wrong, ensure hints field exists
+        llm_result.setdefault("hints", [])
 
     consistency = {
         "score": int(llm_result.get("score") or 0),
@@ -459,8 +520,20 @@ def normalize_namespace(ns_path: Path) -> Dict[str, Any]:
 
             if isinstance(camo_json, dict):
                 original = camo_json.copy()
-                width = int(camo_json.get("screen.width", camo_json.get("screen.availWidth", 1920)))
-                height = int(camo_json.get("screen.height", camo_json.get("screen.availHeight", 1080)))
+                # Enforce 1920x1080 as canonical screen resolution when anomalies occur
+                target_w = 1920
+                target_h = 1080
+                width = int(camo_json.get("screen.width", camo_json.get("screen.availWidth", target_w)))
+                height = int(camo_json.get("screen.height", camo_json.get("screen.availHeight", target_h)))
+
+                # If not already the target resolution, set it
+                if width != target_w or height != target_h:
+                    camo_json["screen.width"] = target_w
+                    camo_json["screen.height"] = target_h
+                    width = target_w
+                    height = target_h
+                    changes.setdefault("enforced_screen", True)
+
                 avail_w = int(camo_json.get("screen.availWidth", width))
                 avail_h = int(camo_json.get("screen.availHeight", max(0, height - 48)))
                 avail_left = int(camo_json.get("screen.availLeft", 0))
@@ -480,6 +553,8 @@ def normalize_namespace(ns_path: Path) -> Dict[str, Any]:
                     env["CAMOU_CONFIG_1"] = json.dumps(camo_json)
                     ns.setdefault("options", {})["env"] = env
                     changes["CAMOU_CONFIG_1_normalized"] = True
+                    if changes.get("enforced_screen"):
+                        changes["enforced_screen"] = True
     except Exception as exc:
         changes["CAMOU_CONFIG_1_error"] = str(exc)
 

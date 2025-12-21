@@ -98,6 +98,7 @@ def create_profile(display_name: str | None = None, *, namespace: str = "default
     print(f"Generating launch options for namespace '{namespace}' at: {user_data_dir_abs}")
 
     # Generate the launch options (force 1920x1080 screen; optionally use geoip)
+    # Use exact 1920x1080 to ensure consistent fingerprints
     screen = Screen(min_width=1920, max_width=1920, min_height=1080, max_height=1080)
     try:
         opts = launch_options(user_data_dir=user_data_dir_abs, headless=headless, screen=screen, geoip=use_geoip)
@@ -160,6 +161,10 @@ def create_profile(display_name: str | None = None, *, namespace: str = "default
         "category": category,
     }
 
+    # Ensure per-namespace consistency options default to desirable values
+    ns_meta.setdefault("consistency_options", {})
+    ns_meta.setdefault("consistency_options", {})["ignore_geo_country"] = ns_meta.get("consistency_options", {}).get("ignore_geo_country", True)
+
     # If we asked to use geoip and requests is available, resolve public IP geolocation now
     if use_geoip and requests is not None:
         try:
@@ -221,6 +226,13 @@ def create_profile(display_name: str | None = None, *, namespace: str = "default
     except Exception:
         pass
 
+    # Normalize namespace immediately so hardware/canvas/webgl/accept-language and defaults are applied
+    try:
+        from BW_Controller.consistency import normalize_namespace
+        normalize_namespace(ns_path)
+    except Exception as _exc:
+        print("Could not normalize namespace during creation:", _exc)
+
     # Register namespace in profile meta and write profile.json
     profile_meta.setdefault("namespaces", {})[namespace] = str(ns_path)
     with profile_path.open("w", encoding="utf-8") as f:
@@ -233,6 +245,7 @@ def create_profile(display_name: str | None = None, *, namespace: str = "default
         from BW_Controller.consistency import run_consistency_and_save
         import multiprocessing as _mp
 
+        # run_consistency_and_save will read namespace file and apply defaults (ignore_geo_country default is True)
         p = _mp.Process(target=run_consistency_and_save, args=(ns_path,), daemon=True)
         p.start()
     except Exception as _exc:  # pragma: no cover - non-fatal
