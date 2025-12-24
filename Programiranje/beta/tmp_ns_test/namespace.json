@@ -1,0 +1,17 @@
+{
+  "name": "default",
+  "options": {
+    "env": {
+      "CAMOU_CONFIG_1": "{\"screen.width\": 1920, \"screen.height\": 1080, \"media.peerconnection.enabled\": false, \"media.peerconnection.ice.no_host\": true, \"media.peerconnection.ice.default_address_only\": true, \"network.dns.disableIPv6\": true}"
+    }
+  },
+  "privacy": {
+    "block_webrtc": true,
+    "disable_ipv6": true
+  },
+  "hardware": {
+    "webgl_present": false,
+    "device_memory_gb": 8,
+    "media_device_count": 0
+  }
+}

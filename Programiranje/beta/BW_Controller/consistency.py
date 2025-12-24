@@ -549,6 +549,19 @@ def normalize_namespace(ns_path: Path) -> Dict[str, Any]:
                 if camo_json.get("window.screenY", 0) >= height:
                     camo_json["window.screenY"] = 0
 
+                # Apply privacy-related prefs based on namespace settings
+                privacy = ns.get("privacy", {})
+                # If the namespace wants WebRTC blocked, set the relevant Firefox prefs
+                if privacy.get("block_webrtc"):
+                    camo_json.setdefault("media.peerconnection.enabled", False)
+                    camo_json.setdefault("media.peerconnection.ice.no_host", True)
+                    camo_json.setdefault("media.peerconnection.ice.default_address_only", True)
+                    changes.setdefault("applied_privacy", []).append("block_webrtc")
+                # If we want to disable IPv6 at the browser level, set the DNS pref
+                if privacy.get("disable_ipv6"):
+                    camo_json.setdefault("network.dns.disableIPv6", True)
+                    changes.setdefault("applied_privacy", []).append("disable_ipv6")
+
                 if camo_json != original:
                     env["CAMOU_CONFIG_1"] = json.dumps(camo_json)
                     ns.setdefault("options", {})["env"] = env

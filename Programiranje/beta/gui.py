@@ -466,6 +466,15 @@ class MainGUI(QWidget):
             chk_ignore.setChecked(bool(ns_meta.get('consistency_options', {}).get('ignore_geo_country', True)))
             dlg_layout.addWidget(chk_ignore)
 
+            # Privacy toggles
+            chk_block_webrtc = QCheckBox("Block WebRTC (prevent STUN/ICE IP leaks)")
+            chk_block_webrtc.setChecked(bool(ns_meta.get('privacy', {}).get('block_webrtc', True)))
+            dlg_layout.addWidget(chk_block_webrtc)
+
+            chk_disable_ipv6 = QCheckBox("Disable IPv6 for browser (network.dns.disableIPv6)")
+            chk_disable_ipv6.setChecked(bool(ns_meta.get('privacy', {}).get('disable_ipv6', True)))
+            dlg_layout.addWidget(chk_disable_ipv6)
+
             btns = QHBoxLayout()
             btn_copy = QPushButton("Kopiraj u clipboard")
             btn_copy.setFixedWidth(160)
@@ -479,8 +488,10 @@ class MainGUI(QWidget):
                     # update namespace file with the choice
                     nm = json.loads(open(namespace_path, 'r', encoding='utf-8').read())
                     nm.setdefault('consistency_options', {})['ignore_geo_country'] = bool(chk_ignore.isChecked())
+                    nm.setdefault('privacy', {})['block_webrtc'] = bool(chk_block_webrtc.isChecked())
+                    nm.setdefault('privacy', {})['disable_ipv6'] = bool(chk_disable_ipv6.isChecked())
                     open(namespace_path, 'w', encoding='utf-8').write(json.dumps(nm, indent=2, ensure_ascii=False))
-                    # trigger recheck
+                    # trigger recheck (re-normalize and run consistency checks)
                     self.on_recheck_clicked(namespace_path)
                     QMessageBox.information(self, "Saved", "Settings saved and recheck started.")
                     dlg.accept()
