@@ -49,11 +49,14 @@ def _make_serializable(obj: Any) -> Any:
 	return str(obj)
 
 
-def create_profile(display_name: str | None = None, *, namespace: str = "default", category: str | None = None, headless: bool = False, no_launch: bool = False, profile_path: str | None = None, use_geoip: bool = True) -> tuple[str, str]:
+def create_profile(display_name: str | None = None, *, namespace: str = "default", category: str | None = None, headless: bool = False, no_launch: bool = False, profile_path: str | None = None, use_geoip: bool = True, proxy_template: str | None = None) -> tuple[str, str]:
     """Create a profile (or namespace) and save its launch options.
 
     If `profile_path` points to an existing `profile.json`, add the namespace under
     that profile. Otherwise create a new profile. Returns (profile_id, namespace).
+    
+    Args:
+        proxy_template: Optional proxy URL template (e.g. http://user:pass@host:port with {id profila koji se pokrece} placeholder)
     """
     PROFILES_DIR.mkdir(exist_ok=True)
 
@@ -164,6 +167,14 @@ def create_profile(display_name: str | None = None, *, namespace: str = "default
     # Ensure per-namespace consistency options default to desirable values
     ns_meta.setdefault("consistency_options", {})
     ns_meta.setdefault("consistency_options", {})["ignore_geo_country"] = ns_meta.get("consistency_options", {}).get("ignore_geo_country", True)
+
+    # Read proxy_template from parameter, environment variable, or profile meta
+    if not proxy_template:
+        proxy_template = os.environ.get("CAMOUFOX_PROXY") or profile_meta.get("proxy_template")
+    
+    if proxy_template:
+        ns_meta["proxy_template"] = proxy_template
+        print(f"Using proxy_template: {proxy_template[:80]}...")  # Show first 80 chars to avoid exposing full credentials
 
     # If we asked to use geoip and requests is available, resolve public IP geolocation now
     if use_geoip and requests is not None:

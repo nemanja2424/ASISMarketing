@@ -395,47 +395,33 @@ def call_lm_assess(fingerprint: Dict[str, Any], checks: Dict[str, Any], consiste
 
 
 def _deterministic_hints_for_checks(checks: Dict[str, Any]) -> list:
-    """Return deterministic, actionable hints in a stable order.
-
-    Priority & ordering follows the user's requested preference:
-      1) WebGL hint
-      2) Canvas hint
-      3) Accept-Language hint
-      4) Timezone consistency hint
-    Additional hints (e.g., screen/device memory) may be appended when relevant.
-    """
     hints = []
-
-    # 1) WebGL
-    if checks.get("webgl_present") is False:
-        hints.append("Consider enabling WebGL or providing WebGL vendor/renderer data for richer fingerprinting.")
-
-    # 2) Canvas
-    if not checks.get("canvas_present"):
-        hints.append("Generate a canvas fingerprint hash (e.g., via a small canvas draw + hash) to improve uniqueness.")
-
-    # 3) Accept-Language / navigator.languages
-    if not checks.get("accept_language"):
-        hints.append("Provide an Accept-Language header / navigator.languages to improve completeness.")
-
-    # 4) Timezone consistency
-    if checks.get("timezone_match") is None:
-        hints.append("Ensure timezone information is present and consistent with geolocation coordinates.")
-
-    # Additional optional hints (kept after the requested ones)
+    # Screen anomalies / sizes
     if checks.get("screen_ok") is False:
         hints.append("Provide accurate screen resolution and color depth to match the device (e.g., 1920x1080).")
+    # WebGL / canvas
+    if checks.get("webgl_present") is False:
+        hints.append("Consider enabling WebGL or providing WebGL vendor/renderer data for richer fingerprinting.")
+    if not checks.get("canvas_present"):
+        hints.append("Generate a canvas fingerprint hash (e.g., via a small canvas draw + hash) to improve uniqueness.")
+    # Device memory / media devices
     if checks.get("device_memory_gb") is None:
         hints.append("Report device memory in GB via navigator.deviceMemory or a reasonable default.")
     if checks.get("media_device_count") is None:
         hints.append("Enumerate media devices (navigator.mediaDevices.enumerateDevices()) to report audio/video device counts.")
+    # Accept-Language
+    if not checks.get("accept_language"):
+        hints.append("Provide an Accept-Language header / navigator.languages to improve completeness.")
+    # Timezone
+    if checks.get("timezone_match") is None:
+        hints.append("Ensure timezone information is present and consistent with geolocation coordinates.")
 
-    # Deduplicate preserving order
-    out = []
+    # Deduplicate and return
+    unique = []
     for h in hints:
-        if h not in out:
-            out.append(h)
-    return out
+        if h not in unique:
+            unique.append(h)
+    return unique
 
 
 def run_consistency_and_save(namespace_path: Path, consistency_options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -548,19 +534,6 @@ def normalize_namespace(ns_path: Path) -> Dict[str, Any]:
                     camo_json["window.screenX"] = 0
                 if camo_json.get("window.screenY", 0) >= height:
                     camo_json["window.screenY"] = 0
-
-                # Apply privacy-related prefs based on namespace settings
-                privacy = ns.get("privacy", {})
-                # If the namespace wants WebRTC blocked, set the relevant Firefox prefs
-                if privacy.get("block_webrtc"):
-                    camo_json.setdefault("media.peerconnection.enabled", False)
-                    camo_json.setdefault("media.peerconnection.ice.no_host", True)
-                    camo_json.setdefault("media.peerconnection.ice.default_address_only", True)
-                    changes.setdefault("applied_privacy", []).append("block_webrtc")
-                # If we want to disable IPv6 at the browser level, set the DNS pref
-                if privacy.get("disable_ipv6"):
-                    camo_json.setdefault("network.dns.disableIPv6", True)
-                    changes.setdefault("applied_privacy", []).append("disable_ipv6")
 
                 if camo_json != original:
                     env["CAMOU_CONFIG_1"] = json.dumps(camo_json)

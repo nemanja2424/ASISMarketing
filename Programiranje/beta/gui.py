@@ -30,13 +30,27 @@ from BW_Controller.run_profile import run_profile_process
 
 class MainGUI(QWidget):
     PROFILES_DIR = "profiles"
+    DEFAULT_PROXY_TEMPLATE = "http://dd6cd6b022130450c8cc__cr.rs;sessid.{id profila koji se pokrece}:3a783e2aede450db@gw.dataimpulse.com:823"
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ASIS Marketing Browser")
         self.resize(1800, 900)
         self.setWindowIcon(QIcon("Media/logo.png"))
+        self._ensure_config()
         self.init_ui()
+
+    def _ensure_config(self):
+        """Ensure config.json exists with default proxy template"""
+        config_path = Path(self.PROFILES_DIR) / "config.json"
+        Path(self.PROFILES_DIR).mkdir(exist_ok=True)
+        
+        if not config_path.exists():
+            config = {
+                "proxy_template": self.DEFAULT_PROXY_TEMPLATE
+            }
+            with config_path.open("w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
 
     def init_ui(self):
         # ===== Glavni layout =====
@@ -345,9 +359,24 @@ class MainGUI(QWidget):
         if not ok or not category:
             return
 
+        # Load default proxy template from config
+        config_path = Path(self.PROFILES_DIR) / "config.json"
+        proxy_template = None
+        if config_path.exists():
+            try:
+                config = json.load(config_path.open("r", encoding="utf-8"))
+                proxy_template = config.get("proxy_template")
+            except Exception:
+                pass
+
         process = multiprocessing.Process(
             target=create_profile,
-            kwargs={"display_name": name, "namespace": "default", "category": category},
+            kwargs={
+                "display_name": name,
+                "namespace": "default",
+                "category": category,
+                "proxy_template": proxy_template,
+            },
             daemon=False,
         )
         process.start()
