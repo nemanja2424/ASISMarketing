@@ -1,0 +1,20 @@
+WARMUP REPORT
+Batch Name,Warmup 2025-12-27 22:19
+Created,2025-12-27 21:19:57
+Total Duration (min),240
+Status,running
+
+SUMMARY
+Total Profiles,1
+Completed Sessions,0
+Running Sessions,0
+Pending Sessions,1
+Failed Sessions,0
+Total Actions,0
+Total Duration (actual),0
+
+ACTIONS BREAKDOWN
+
+PER PROFILE STATISTICS
+Profile ID,Display Name,Session Type,Status,Expected Duration (min),Actual Duration (min),Total Actions,Likes,Follows,Saves,DMs,Success Rate (%)
+--help,--help,engagement,pending,30,,0,0,0,0,0,0.0%

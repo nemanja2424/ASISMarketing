@@ -1,0 +1,130 @@
+{
+  "warmup_system": {
+    "enabled": true,
+    "database_path": "warmup/warmup.db",
+    "profiles_folder": "profiles",
+    "reports_folder": "warmup/reports"
+  },
+  
+  "default_batch_settings": {
+    "total_profiles": 15,
+    "total_duration_minutes": 240,
+    "session_duration_min": 20,
+    "session_duration_max": 50,
+    "stagger_between_profiles_min": 2,
+    "stagger_between_profiles_max": 8
+  },
+  
+  "action_limits": {
+    "light_activity": {
+      "likes_min": 8,
+      "likes_max": 15,
+      "follows_min": 3,
+      "follows_max": 7,
+      "unfollows_min": 0,
+      "unfollows_max": 2,
+      "saves_min": 1,
+      "saves_max": 4,
+      "dms_min": 0,
+      "dms_max": 2
+    },
+    "medium_activity": {
+      "likes_min": 15,
+      "likes_max": 30,
+      "follows_min": 7,
+      "follows_max": 15,
+      "unfollows_min": 2,
+      "unfollows_max": 5,
+      "saves_min": 3,
+      "saves_max": 8,
+      "dms_min": 1,
+      "dms_max": 4
+    },
+    "high_activity": {
+      "likes_min": 30,
+      "likes_max": 50,
+      "follows_min": 15,
+      "follows_max": 25,
+      "unfollows_min": 5,
+      "unfollows_max": 10,
+      "saves_min": 8,
+      "saves_max": 15,
+      "dms_min": 3,
+      "dms_max": 7
+    }
+  },
+  
+  "timing_settings": {
+    "action_delay_min_sec": 2,
+    "action_delay_max_sec": 8,
+    "dm_response_delay_min_sec": 60,
+    "dm_response_delay_max_sec": 300,
+    "scroll_delay_min_sec": 3,
+    "scroll_delay_max_sec": 10,
+    "batch_delay_between_profiles_min_sec": 120,
+    "batch_delay_between_profiles_max_sec": 480
+  },
+  
+  "personality_settings": {
+    "tone_types": ["casual", "friendly", "sporty", "formal"],
+    "interests": [
+      "fitness", "travel", "gaming", "tech", "food",
+      "music", "art", "photography", "sport", "fashion",
+      "beauty", "health", "nature", "movies", "books",
+      "cooking", "DIY", "pets", "lifestyle", "business"
+    ],
+    "activity_levels": ["light", "medium", "high"],
+    "timezones": [
+      "Europe/Belgrade", "Europe/London", "Europe/Berlin",
+      "America/New_York", "America/Los_Angeles", "Asia/Bangkok"
+    ]
+  },
+  
+  "interaction_settings": {
+    "inter_profile_connection_probability": 0.5,
+    "follow_back_probability": 0.7,
+    "dm_response_probability": 0.6,
+    "message_generation_probability": 0.33
+  },
+  
+  "browser_automation": {
+    "headless": false,
+    "browser_type": "firefox",
+    "timeout_sec": 30,
+    "implicit_wait_sec": 10,
+    "page_load_timeout_sec": 20,
+    "connection_slow_down": 1.0
+  },
+  
+  "instagram_specific": {
+    "login_timeout_sec": 30,
+    "feed_scroll_count": 3,
+    "feed_scroll_pause_sec": 2,
+    "profile_load_delay_sec": 2,
+    "action_success_rate_target": 0.95
+  },
+  
+  "language_settings": {
+    "primary_language": "sr",
+    "message_language": "serbian",
+    "use_emojis": true,
+    "emoji_probability": 0.7
+  },
+  
+  "logging_settings": {
+    "log_level": "INFO",
+    "log_to_file": true,
+    "log_file": "warmup/logs/warmup.log",
+    "log_to_console": true,
+    "verbose_logging": false
+  },
+  
+  "safety_limits": {
+    "max_actions_per_hour": 200,
+    "max_follows_per_day": 150,
+    "max_unfollows_per_day": 100,
+    "max_dms_per_day": 50,
+    "min_delay_between_same_action_sec": 3,
+    "rest_period_after_batch_min": 60
+  }
+}
