@@ -4,6 +4,7 @@ Samo generiše warmup podatke bez otvaranja browser-a
 """
 import sys
 import json
+import random
 from pathlib import Path
 from datetime import datetime
 from typing import List
@@ -22,6 +23,12 @@ def main():
     
     if not profile_ids:
         print("[ERROR] Nema profila za warmup!")
+        return
+    
+    # Validiraj profile ID-eve (ne smeju biti opcije kao --help, -h, itd)
+    invalid_ids = [pid for pid in profile_ids if pid.startswith('-') or pid in ['--help', 'help', '']]
+    if invalid_ids:
+        print(f"[ERROR] Nevalidni profile ID-evi: {invalid_ids}")
         return
     
     # Initialize
@@ -53,6 +60,56 @@ def main():
             actions_planned=20
         )
         print(f"  ✓ {profile_id[:12]}: sesija {session_id}")
+        
+        # Generiši akcije za ovu sesiju
+        actions_plan = orchestrator._generate_actions(
+            {'personality': {'activity_level': 'medium'}},
+            'engagement'
+        )
+        
+        # Sačuvaj akcije u bazu
+        cursor = db.connection.cursor()
+        likes_count = actions_plan.get('likes', 8)
+        follows_count = actions_plan.get('follows', 5)
+        saves_count = actions_plan.get('saves', 2)
+        
+        # Dodaj like akcije
+        for j in range(likes_count):
+            cursor.execute("""
+                INSERT INTO actions (session_id, profile_id, action_type, timestamp, success, delay_before_sec)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                session_id, profile_id, 'like',
+                datetime.now().isoformat(),
+                0,  # 0 = pending
+                random.randint(5, 30)
+            ))
+        
+        # Dodaj follow akcije
+        for j in range(follows_count):
+            cursor.execute("""
+                INSERT INTO actions (session_id, profile_id, action_type, timestamp, success, delay_before_sec)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                session_id, profile_id, 'follow',
+                datetime.now().isoformat(),
+                0,
+                random.randint(30, 60)
+            ))
+        
+        # Dodaj save akcije
+        for j in range(saves_count):
+            cursor.execute("""
+                INSERT INTO actions (session_id, profile_id, action_type, timestamp, success, delay_before_sec)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                session_id, profile_id, 'save',
+                datetime.now().isoformat(),
+                0,
+                random.randint(5, 30)
+            ))
+        
+        db.connection.commit()
     
     # Generiši inter-profil relacije
     print("[🔗] Postavljanje inter-profil relacija...")

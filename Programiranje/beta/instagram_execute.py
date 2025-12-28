@@ -6,6 +6,7 @@ import sys
 import json
 import random
 import time
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict
@@ -14,6 +15,7 @@ from typing import List, Dict
 sys.stdout = open(sys.stdout.fileno(), mode='w', buffering=1)
 
 from warmup import WarmupDatabase, WarmupOrchestrator
+from BW_Controller.run_profile import run_profile_process
 
 
 class InstagramHumanExecutor:
@@ -92,7 +94,7 @@ class InstagramHumanExecutor:
     def _execute_session(self, session_id: int, profile_id: str, 
                          start_delay_min: int, duration_min: int, 
                          actions_planned: int):
-        """Izvrši jednu sesiju sa humanoid ponašanjem"""
+        """Izvrši jednu sesiju sa humanoid ponašanjem u browser-u"""
         print(f"\n[▶️] Pokretanje sesije: {session_id}")
         print(f"    └─ Profil: {profile_id}")
         print(f"    └─ Čekanje: {start_delay_min} min | Trajanje: {duration_min} min | Akcije: {actions_planned}")
@@ -102,25 +104,66 @@ class InstagramHumanExecutor:
             print(f"[⏳] Čekanje {start_delay_min} minuta pre nego što počnemo...")
             self._human_delay(start_delay_min * 60)
         
-        print(f"[🌐] Simuliranje humanoid ponašanja za profil {profile_id}...")
+        print(f"[🌐] Otvaranje profila u browser-u...")
         
-        # Simuliraj humanoid akcije (BEZ čekanja na browser!)
-        actions_to_do = min(actions_planned, 20)  # Max 20 akcija
-        for i in range(actions_to_do):
-            action_type = random.choice([
-                "like",
-                "follow",
-                "save",
-                "view_story",
-                "scroll"
-            ])
+        # Pokreni profil kroz browser sa timeout-om
+        try:
+            # Puna putanja do profil.json
+            profile_path = f"profiles/{profile_id}/profile.json"
             
-            self._simulate_action(profile_id, action_type, session_id)
+            # Compute timeout (duration_min * 60 sekundi, maksimalno 300 sekundi = 5 minuta)
+            timeout_sec = min(duration_min * 60, 300)
             
-            # Human-like delay između akcija
-            delay = random.randint(5, 15)  # 5-15 sekundi između akcija
-            print(f"    └─ Akcija {i+1}/{actions_to_do}: {action_type} | Pauza: {delay}s")
-            time.sleep(delay)
+            # Učitaj akcije iz baze
+            cursor = self.db.connection.cursor()
+            cursor.execute("""
+                SELECT id, action_type, delay_before_sec
+                FROM actions
+                WHERE session_id = ? AND success = 0
+                ORDER BY delay_before_sec ASC
+            """, (session_id,))
+            actions = cursor.fetchall()
+            
+            if actions:
+                print(f"[📋] Akcije za izvršenje: {len(actions)}")
+                for action_id, action_type, delay_sec in actions[:5]:  # Prikaži prvih 5
+                    print(f"    - {action_type}")
+            else:
+                print(f"[⚠️] Nema akcija za ovu sesiju")
+            
+            # Pokreni kao subprocess sa timeout-om
+            cmd = [sys.executable, "BW_Controller/run_profile.py", profile_path]
+            
+            try:
+                # Pokreni proces sa output capture
+                result = subprocess.run(
+                    cmd, 
+                    timeout=timeout_sec, 
+                    cwd=str(Path.cwd()),
+                    capture_output=False  # Prikaži output kao što se dešava
+                )
+                print(f"[✓] Profil {profile_id} je završio sesiju")
+                
+                # Označi akcije kao izvršene
+                cursor.execute("""
+                    UPDATE actions
+                    SET success = 1
+                    WHERE session_id = ?
+                """, (session_id,))
+                self.db.connection.commit()
+                
+            except subprocess.TimeoutExpired:
+                print(f"[⏱️] Timeout nakon {timeout_sec}s - sesija završena")
+                # Označi delom izvršene akcije
+                cursor.execute("""
+                    UPDATE actions
+                    SET success = 1
+                    WHERE session_id = ? AND success = 0
+                    LIMIT 5
+                """, (session_id,))
+                self.db.connection.commit()
+        except Exception as e:
+            print(f"[⚠️] Greška pri pokretanju profila: {e}")
         
         # Ažurira status sesije
         self.db.update_session_status(session_id, "completed")

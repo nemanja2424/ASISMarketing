@@ -1,0 +1,73 @@
+{
+  "batch_id": 17,
+  "batch_name": "Warmup 2025-12-28 18:08",
+  "created_at": "2025-12-28 17:08:38",
+  "duration_minutes": 240,
+  "status": "running",
+  "generated_at": "2025-12-28T18:08:38.798213",
+  "summary": {
+    "total_profiles": 2,
+    "completed_sessions": 0,
+    "running_sessions": 0,
+    "pending_sessions": 2,
+    "failed_sessions": 0,
+    "total_actions": 35,
+    "actions_by_type": {
+      "like": 22,
+      "follow": 9,
+      "save": 4
+    },
+    "total_duration_actual_minutes": 0
+  },
+  "per_profile_stats": [
+    {
+      "profile_id": "profile_ad056f6b",
+      "display_name": "profile_ad056f6b",
+      "session_type": "engagement",
+      "status": "pending",
+      "expected_duration": 30,
+      "actual_duration": null,
+      "actions_planned": 20,
+      "actions_completed": null,
+      "total_actions_executed": 13,
+      "actions_breakdown": {
+        "likes": 8,
+        "follows": 3,
+        "unfollows": 0,
+        "saves": 2,
+        "dms": 0,
+        "scrolls": 0,
+        "visits": 0
+      },
+      "success_rate": 0.0,
+      "average_action_delay": 23.076923076923077
+    },
+    {
+      "profile_id": "profile_b3a3ccdd",
+      "display_name": "profile_b3a3ccdd",
+      "session_type": "engagement",
+      "status": "pending",
+      "expected_duration": 30,
+      "actual_duration": null,
+      "actions_planned": 20,
+      "actions_completed": null,
+      "total_actions_executed": 22,
+      "actions_breakdown": {
+        "likes": 14,
+        "follows": 6,
+        "unfollows": 0,
+        "saves": 2,
+        "dms": 0,
+        "scrolls": 0,
+        "visits": 0
+      },
+      "success_rate": 0.0,
+      "average_action_delay": 22.59090909090909
+    }
+  ],
+  "inter_profile_interactions": [],
+  "messages_report": {
+    "total_conversations": 0,
+    "conversations": []
+  }
+}

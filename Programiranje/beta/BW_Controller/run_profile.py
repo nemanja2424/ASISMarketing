@@ -25,8 +25,15 @@ def run_profile_process(profile_json_path: str) -> None:
         with p.open("r", encoding="utf-8") as f:
             profile = json.load(f)
         namespaces = profile.get("namespaces", {})
+        
+        # Ako nema namespaces, pokušaj da kreiraj default
         if not namespaces:
-            raise RuntimeError("Profile has no namespaces")
+            default_ns_path = p.parent / "namespaces" / "default" / "namespace.json"
+            if default_ns_path.exists():
+                namespaces = {"default": str(default_ns_path)}
+            else:
+                raise RuntimeError("Profile has no namespaces")
+        
         # Prefer a 'default' namespace if present, otherwise pick the first one
         if "default" in namespaces:
             ns_path = Path(namespaces["default"])
@@ -49,6 +56,9 @@ def run_profile_process(profile_json_path: str) -> None:
             with p.open("r", encoding="utf-8") as f:
                 profile = json.load(f)
             profile_id = profile.get("profile_id")
+            # Ako nema profile_id u JSON, uzmi iz path-a
+            if not profile_id:
+                profile_id = p.parent.name  # profiles/<profile_id>/profile.json
         else:
             # namespace.json -> profile dir should be three levels up (profiles/<profile_id>/namespaces/<ns>/namespace.json)
             try:
@@ -278,12 +288,55 @@ def run_profile_process(profile_json_path: str) -> None:
         except Exception:
             pass
 
-        # Navigate to test page with timeout
+        # Navigate to Instagram instead of test page
         try:
-            page.goto("https://browserleaks.com/ip", timeout=15000)  # 15 second timeout
+            print("🌐 Navigiram na Instagram...")
+            page.goto("https://instagram.com", timeout=15000)  # 15 second timeout
+            
+            # Čekaj da se stranica učita
+            try:
+                page.wait_for_load_state("networkidle", timeout=5000)
+            except:
+                pass
+            
+            print("[✓] Instagram učitan - simuliram aktivnost")
+            
+            # Simuliraj scrolling kroz feed (human-like behavior)
+            import random
+            import time
+            
+            for i in range(5):  # Scrolluj 5 puta
+                try:
+                    # Scrolluj
+                    page.evaluate("window.scrollBy(0, window.innerHeight)")
+                    
+                    # Human-like delay između scrollova
+                    delay = random.uniform(2, 5)
+                    time.sleep(delay)
+                    
+                    # Verovatnoća da će lajkovati post (50%)
+                    if random.random() > 0.5:
+                        try:
+                            # Pronađi srce ikonu i klikni
+                            likes = page.query_selector_all("span svg[aria-label='Like']")
+                            if likes:
+                                # Klikni na random like dugme
+                                like_btn = random.choice(likes)
+                                like_btn.click()
+                                print("[❤️] Lajkovao post")
+                                time.sleep(random.uniform(1, 3))
+                        except:
+                            pass
+                
+                except Exception as e:
+                    print(f"[⚠️] Greška pri interakciji: {e}")
+                    break
+            
+            print("[✓] Simulacija završena")
+            
         except Exception as e:
-            print(f"Warning: Could not navigate to browserleaks.com: {e}")
-            # Continue anyway - user can navigate manually
+            print(f"⚠️ Greška pri navigaciji na Instagram: {e}")
+            # Continue anyway - fallback to browser
         
         print("Camoufox is running. Close the browser window to stop it.")
 
